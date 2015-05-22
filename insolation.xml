@@ -1,0 +1,449 @@
+!*
+!	Lock helpers parameters
+!*
+	lock "W", "H", "P"
+	lock "iEquinoxAngle", "iHourAngle", "iProjectLatitude"
+	lock "iSector_W"
+	lock "iSectorStart_W", "iSectorStart_A", "iSectorStart_H", "iSectorEnd_W", "iSectorEnd_A", "iSectorEnd_H"
+	lock "iSectorMid_W", "iSectorMid_A", "iSectorMid_H"
+	lock "iSectorMid_A_p", "iSectorMid_L", "iSectorMid_L_p", "iSectorMid_H_p"
+	lock "iOffset_A", "iOffsetStart_A", "iOffsetStart_W", "iOffset_W_l", "iOffsetEnd_A", "iOffsetEnd_W", "iOffset_W_r"
+	lock "iBreakMid_H", "iBreakMid_L", "iBreakMid_L_p", "iBreakMid_W", "iBreakMid_A", "iBreakStart_W", "iBreakStart_A", "iBreakEnd_W", "iBreakEnd_A"
+!*
+!	Set global parameters
+!*
+	parameters iProjectLatitude = GLOB_PROJECT_LATITUDE
+	parameters iEquinoxAngle = 90 - iProjectLatitude
+	parameters P = cos(iEquinoxAngle)
+
+!*
+!	Define necessary local paramers
+!	something new will be here
+!	test 3
+!*
+
+!*
+!	Set restrictions and ranges
+!*
+	values "iSectorMid_H"	range (0,]
+
+	values "iSectorStart_A"	range [15, 165]
+	values "iSectorEnd_A"	range [15, 165]
+
+	!! sector, break and offsets restrictions
+	!! from less to more
+	if bOffsetLeft | bOffsetRight then
+		if bBreak then
+			if bOffsetLeft then
+				values "iSectorStart_W" range [iSectorMid_H/tan(iBreakStart_A-iOffset_A-1.25), iSectorMid_H/tan(15)]
+				values "iSectorEnd_W" range [-iSectorMid_H/tan(iBreakEnd_A+1.25), -iSectorMid_H/tan(165)]
+			endif
+			if bOffsetRight then
+				values "iSectorStart_W" range [iSectorMid_H/tan(iBreakStart_A-1.25), iSectorMid_H/tan(15)]
+				values "iSectorEnd_W" range [-iSectorMid_H/tan(iBreakEnd_A+iOffset_A+1.25), -iSectorMid_H/tan(165)]
+			endif
+		else
+			values "iSectorStart_W" range [iSectorMid_H/tan(iSectorEnd_A-iOffset_A-1.25), iSectorMid_H/tan(15)]
+			values "iSectorEnd_W" range [-iSectorMid_H/tan(iSectorStart_A+iOffset_A+1.25), -iSectorMid_H/tan(165)]
+		endif
+	else
+		if bBreak then
+			values "iSectorStart_W" range [iSectorMid_H/tan(iBreakStart_A-1.25), iSectorMid_H/tan(15)]
+			values "iSectorEnd_W" range [-iSectorMid_H/tan(iBreakEnd_A+1.25), -iSectorMid_H/tan(165)]
+		else
+			values "iSectorStart_W" range [iSectorMid_H/tan(iSectorEnd_A-1.25), iSectorMid_H/tan(15)]
+			values "iSectorEnd_W" range [-iSectorMid_H/tan(iSectorStart_A+1.25), -iSectorMid_H/tan(165)]
+		endif
+	endif
+
+	!! break modifying restrictions
+	if bBreak then
+		if not(bOffsetLeft) & not(bOffsetRight) then
+			values "iBreakStart_W" range [iBreakMid_H/tan(iBreakEnd_A-1.25), iBreakMid_H/tan(iSectorStart_A+1.25)]
+			values "iBreakEnd_W" range [iBreakMid_H/tan(iSectorEnd_A-1.25), iBreakMid_H/tan(iBreakStart_A+1.25)]
+		else
+			if bOffsetLeft then
+				values "iBreakStart_W" range [iBreakMid_H/tan(iBreakEnd_A-1.25), iBreakMid_H/tan(ioffsetEnd_A+1.25)]
+				values "iBreakEnd_W" range [iBreakMid_H/tan(iSectorEnd_A-1.25), iBreakMid_H/tan(iBreakStart_A+1.25)]
+			endif
+			if bOffsetRight then
+				values "iBreakStart_W" range [iBreakMid_H/tan(iBreakEnd_A-1.25), iBreakMid_H/tan(iSectorStart_A+1.25)]
+				values "iBreakEnd_W" range [iBreakMid_H/tan(iOffsetStart_A-1.25), iBreakMid_H/tan(iBreakStart_A+1.25)]
+			endif
+		endif
+	endif
+
+	gosub "listenVerticalModifying"
+	gosub "listenHorizontalModifying"
+	gosub "listenOffsetModifying"
+	gosub "listenBreakModifying"
+	gosub "listenAngleDimension"
+
+end
+
+
+
+
+!*
+!	Subroutine operations
+!*
+
+"listenAngleDimension":
+	iSector_A = iSectorEnd_A - iSectorStart_A
+	if bOffsetLeft | bOffsetRight then iSector_A = iSector_A - iOffset_A
+	if bBreak then
+		iBreak_A = iBreakEnd_A - iBreakStart_A
+		iSector_A = iSector_A - (iBreak_A)
+	else
+		iBreak_A = 0
+	endif
+	parameters iSector_A = iSector_A
+	parameters iBreak_A = iBreak_A
+
+	gosub "updateTime"
+return
+
+	"updateTime":
+		iSector_T = iSector_A / iHourAngle
+		iBreak_T = iBreak_A / iHourAngle
+		parameters iSector_T = iSector_T
+		parameters iBreak_T = iBreak_T
+	return
+
+!*
+!	Manipulation with break
+!*
+"listenBreakModifying":
+	if not(bBreak) then parameters iBreakMid_H = iSectorMid_H
+
+	if glob_modpar_name="bBreak" then
+		if bBreak then gosub "addBreak"
+		if not(bBreak) then "delBreak"
+	endif
+
+	!! listen to break dimensions modifying
+	if glob_modpar_name = "iBreakStart_W" then gosub "updateBreakStartAngle"
+	if glob_modpar_name = "iBreakEnd_W" then gosub "updateBreakEndAngle"
+	if glob_modpar_name = "iBreakStart_A" then gosub "updateBreakStartWidth"
+	if glob_modpar_name = "iBreakEnd_A" then gosub "updateBreakEndWidth"
+
+	if glob_modpar_name = "iBreakMid_L" then gosub "updateBreakHeightFrom3D"
+	if glob_modpar_name = "iBreakMid_L_p" then gosub "updateBreakHeightFrom2D"
+return
+
+	"addBreak":
+		iBreakStart_W = iSectorMid_W + iSector_W / 16
+		iBreakEnd_W = iSectorMid_W - iSector_W / 16
+		parameters iBreakStart_W  = iBreakStart_W
+		parameters iBreakEnd_W  = iBreakEnd_W
+
+		if iBreakStart_W > -0.01 & iBreakStart_W < 0.01 then
+			iBreakStart_A = 90
+		else
+			if iBreakStart_W > 0 then iBreakStart_A = atn(iSectorMid_H / iBreakStart_W)
+			if iBreakStart_W < 0 then iBreakStart_A = 180 + atn(iSectorMid_H / iBreakStart_W)
+		endif
+		if iBreakEnd_W > -0.01 & iBreakEnd_W < 0.01 then
+			iBreakEnd_A = 90
+		else
+			if iBreakEnd_W > 0 then iBreakEnd_A = atn(iSectorMid_H / iBreakEnd_W)
+			if iBreakEnd_W < 0 then iBreakEnd_A = 180 + atn(iSectorMid_H / iBreakEnd_W)
+		endif
+		parameters iBreakStart_A = iBreakStart_A
+		parameters iBreakEnd_A = iBreakEnd_A
+
+		!! check availability of break
+		if (iBreakStart_A-1.25 <= iSectorStart_A) | (iBreakEnd_A+1.25 >= iSectorEnd_A) then parameters bBreak = 0
+		if bOffsetLeft & iOffsetEnd_A + 1.25 >= iBreakStart_A then parameters bBreak = 0
+		if bOffsetRight & iOffsetStart_A - 1.25 <= iBreakEnd_A then parameters bBreak = 0
+
+		iBreakMid_A = iBreakStart_A + (iBreakEnd_A - iBreakStart_A)/2
+		parameters iBreakMid_A = iBreakMid_A
+
+		iBreakMid_L = iBreakMid_H / sin(iBreakMid_A)
+		iBreakMid_L_p = iBreakMid_L * P
+		parameters iBreakMid_L = iBreakMid_L
+		parameters iBreakMid_L_p = iBreakMid_L_p
+
+		gosub "updateBreakDimension"
+	return
+
+	"updateBreakDimension":
+		gosub "updateBreakStartWidth"
+		gosub "updateBreakEndWidth"
+		gosub "updateBreakBisector"
+	return
+
+	"updateBreakBisector":
+		iBreakMid_A = iBreakStart_A + (iBreakEnd_A - iBreakStart_A)/2
+		parameters iBreakMid_A = iBreakMid_A
+		if iBreakMid_A > 89.999 & iBreakMid_A < 90.001 then
+			iBreakMid_W = 0
+		else
+			iBreakMid_W = iBreakMid_H / tan(iBreakMid_A)
+		endif
+		parameters iBreakMid_W = iBreakMid_W
+	return
+
+	"updateBreakHeightFrom3D":
+		if iBreakMid_A > 89.99 & iBreakMid_A < 90.01 then
+			iBreakMid_H = iBreakMid_L
+		else
+			iBreakMid_H = iBreakMid_L * sin(iBreakMid_A)
+		endif
+		parameters iBreakMid_H = iBreakMid_H
+		gosub "updateBreakDimension"
+	return
+
+	"updateBreakHeightFrom2D":
+		if iBreakMid_A > 89.99 & iBreakMid_A < 90.01 then
+			iBreakMid_H = iBreakMid_L_p / P
+		else
+			if iBreakMid_A > 90 then iBreakMid_H = -iBreakMid_L_p * sin(atn(tan(iBreakMid_A)*P)) / P
+			if iBreakMid_A < 90 then iBreakMid_H = iBreakMid_L_p * sin(atn(tan(iBreakMid_A)*P)) / P
+		endif
+		parameters iBreakMid_H = iBreakMid_H
+		gosub "updateBreakDimension"
+	return
+
+		"updateBreakStartWidth":
+			if iBreakStart_A > 89.99 & iBreakStart_A < 90.01 then
+				iBreakStart_W = 0
+			else
+				iBreakStart_W = iBreakMid_H / tan(iBreakStart_A)
+			endif
+			parameters iBreakStart_W = iBreakStart_W
+		return
+
+		"updateBreakStartAngle":
+			if iBreakStart_W > -0.01 & iBreakStart_W < 0.01 then
+				iBreakStart_A = 90
+			else
+				if iBreakStart_W > 0 then iBreakStart_A = atn(iBreakMid_H/iBreakStart_W)
+				if iBreakStart_W < 0 then iBreakStart_A = 180 + atn(iBreakMid_H/iBreakStart_W)
+			endif
+			parameters iBreakStart_A = iBreakStart_A
+			gosub "updateBreakBisector"
+		return
+
+		"updateBreakEndWidth":
+			if iBreakEnd_A > 89.99 & iBreakEnd_A < 90.01 then
+				iBreakEnd_W = 0
+			else
+				iBreakEnd_W = iBreakMid_H / tan(iBreakEnd_A)
+			endif
+			parameters iBreakEnd_W = iBreakEnd_W
+		return
+
+		"updateBreakEndAngle":
+			if iBreakEnd_W > -0.01 & iBreakEnd_W < 0.01 then
+				iBreakEnd_A = 90
+			else
+				if iBreakEnd_W > 0 then iBreakEnd_A = atn(iBreakMid_H/iBreakEnd_W)
+				if iBreakEnd_W < 0 then iBreakEnd_A = 180 + atn(iBreakMid_H/iBreakEnd_W)
+			endif
+			parameters iBreakEnd_A = iBreakEnd_A
+			gosub "updateBreakBisector"
+		return
+
+	"delBreak":
+		parameters iBreakStart_W = 0
+		parameters iBreakStart_A = 0
+		parameters iBreakMid_H = iSectorMid_H
+		parameters iBreakMid_A = 0
+		parameters iBreakMid_W = 0
+		parameters iBreakMid_L = 0
+		parameters iBreakMid_L_p = 0
+		parameters iBreakEnd_W = 0
+		parameters iBreakEnd_A = 0
+
+		parameters iBreak_A = 0
+		parameters iBreak_T = 0
+	return
+
+
+!*
+!	Manipulations with offsets
+!*
+"listenOffsetModifying":
+	if glob_modpar_name = "bOffsetLeft" then
+		if bOffsetLeft then gosub "addOffsetLeft"
+		if not(bOffsetLeft) then gosub "delOffset"
+	endif
+	if glob_modpar_name = "bOffsetRight" then
+		if bOffsetRight then gosub "addOffsetRight"
+		if not(bOffsetRight) then gosub "delOffset"
+	endif
+return
+
+		"addOffsetLeft":
+			gosub "delOffset"
+			parameters bOffsetRight = 0
+			gosub "updateOffsetLeft"
+			!! check availability of left offset
+			if iOffsetEnd_A + 1.25 >= iSectorEnd_A then parameters bOffsetLeft = 0
+			!! BREAK !!
+		return
+
+		"addOffsetRight":
+			gosub "delOffset"
+			parameters bOffsetLeft = 0
+			gosub "updateOffsetRight"
+			!! check availability of left offset
+			if iOffsetStart_A - 1.25 <= iSectorStart_A then parameters bOffsetRight = 0
+			!! BREAK !!
+		return
+
+	"updateOffsetsDimension":
+		if bOffsetLeft then gosub "updateOffsetLeft"
+		if bOffsetRight then gosub "updateOffsetRight"
+	return
+
+		"updateOffsetLeft":
+			iOffsetStart_A = iSectorStart_A
+			iOffsetEnd_A = iSectorStart_A + iOffset_A
+			parameters iOffsetStart_A = iOffsetStart_A
+			parameters iOffsetEnd_A = iOffsetEnd_A
+			parameters iOffset_W_l = iSectorStart_W - iSectorMid_H / tan(iOffsetEnd_A)
+		return
+
+		"updateOffsetRight":
+			iOffsetEnd_A = iSectorEnd_A
+			iOffsetStart_A = iSectorEnd_A - iOffset_A
+			parameters iOffsetStart_A = iOffsetStart_A
+			parameters iOffsetEnd_A = iOffsetEnd_A
+			parameters iOffset_W_r = iSectorEnd_W + iSectorMid_H / tan(iOffsetStart_A)
+		return
+
+	"delOffset":
+		parameters iOffsetStart_W	= 0
+		parameters IOffset_W_l		= 0
+		parameters iOffsetStart_A	= 0
+		parameters iOffsetEnd_W		= 0
+		parameters iOffset_W_r		= 0
+		parameters iOffsetEnd_A		= 0
+	return
+
+
+!*
+!	All vertical modifyings, affecting general sector, offsets and break
+!*
+"listenVerticalModifying":
+	if glob_modpar_name = "iSectorMid_L" then gosub "updateHeightFrom3D"
+	if glob_modpar_name = "iSectorMid_L_p" then gosub "updateHeightFrom2D"
+return
+
+
+	"updateHeightFrom3D":
+		if iSectorMid_A > 89.99 & iSectorMid_A < 90.01 then
+			iSectorMid_H = iSectorMid_L
+		else
+			iSectorMid_H = iSectorMid_L * sin(iSectorMid_A)
+		endif
+		parameters iSectorMid_H = iSectorMid_H
+		gosub "applyHeight"
+	return
+
+	"updateHeightFrom2D":
+		if iSectorMid_A > 89.99 & iSectorMid_A < 90.01 then
+			iSectorMid_H = iSectorMid_L_p / P
+		else
+			iSectorMid_H = iSectorMid_L_p / P
+		endif
+		parameters iSectorMid_H = iSectorMid_H
+		gosub "applyHeight"
+	return
+
+	"applyHeight":
+		!! update dependent parameters
+		gosub "updateSectorDimension"
+		if bOffsetLeft | bOffsetRight then gosub "updateOffsetsDimension"
+		!if bBreak then gosub "updateBreakDimension" !! replaced by break own controller
+	return
+
+
+!*
+!	All horizontal modifyings with general sector
+!*
+"listenHorizontalModifying":
+	!! width modifying
+	if glob_modpar_name = "iSectorStart_W" then gosub "updateSectorStartAngle"
+	if glob_modpar_name = "iSectorEnd_W" then gosub "updateSectorEndAngle"
+	!! angles modifying
+	if glob_modpar_name = "iSectorStart_A" then gosub "updateSectorStartWidth"
+	if glob_modpar_name = "iSectorEnd_A" then gosub "updateSectorEndWidth"
+return
+
+	"updateSectorDimension":
+		gosub "updateSectorStartWidth"
+		gosub "updateSectorEndWidth"
+	return
+
+		"updateSectorStartWidth":
+			if iSectorStart_A > 89.99 & iSectorStart_A < 90.01 then
+				iSectorStart_W = 0
+			else
+				if iSectorStart_W > 0 then iSectorStart_W = iSectorMid_H / tan(iSectorStart_A)
+				if iSectorStart_W < 0 then iSectorStart_W = iSectorMid_H / tan(iSectorStart_A)
+			endif
+			parameters iSectorStart_W = iSectorStart_W
+			gosub "updateSectorWidth"
+			gosub "updateBisectorDimension"
+			gosub "updateOffsetsDimension"
+		return
+
+		"updateSectorStartAngle":
+			if iSectorStart_W > -0.01 & iSectorStart_W < 0.01 then
+				iSectorStart_A = 90
+			else
+				if iSectorStart_W > 0 then iSectorStart_A = atn(iSectorMid_H/iSectorStart_W)
+				if iSectorStart_W < 0 then iSectorStart_A = 180+atn(iSectorMid_H/iSectorStart_W)
+			endif
+			parameters iSectorStart_A = iSectorStart_A
+			gosub "updateSectorWidth"
+			gosub "updateBisectorDimension"
+			gosub "updateOffsetsDimension"
+		return
+
+		"updateBisectorDimension":
+			iSectorMid_A = iSectorStart_A + (iSectorEnd_A - iSectorStart_A)/2
+			parameters iSectorMid_A = iSectorMid_A
+			if iSectorMid_A > 89.999 & iSectorMid_A < 90.001 then
+				iSectorMid_W = 0
+			else
+				iSectorMid_W = iSectorMid_H / tan(iSectorMid_A)
+			endif
+			parameters iSectorMid_W = iSectorMid_W
+		return
+
+		"updateSectorEndWidth":
+			if iSectorEnd_A > 89.99 & iSectorEnd_A < 90.01 then
+				iSectorEnd_W = 0
+			else
+				if iSectorEnd_W > 0 then iSectorEnd_W = abs(iSectorMid_H / tan(iSectorEnd_A))
+				if iSectorEnd_W < 0 then iSectorEnd_W = -iSectorMid_H / tan(iSectorEnd_A)
+
+			endif
+			parameters iSectorEnd_W = iSectorEnd_W
+			gosub "updateSectorWidth"
+			gosub "updateBisectorDimension"
+			gosub "updateOffsetsDimension"
+		return
+
+		"updateSectorEndAngle":
+			if iSectorEnd_W > -0.01 & iSectorEnd_W < 0.01 then
+				iSectorEnd_A = 90
+			else
+				if iSectorEnd_W > 0 then iSectorEnd_A = 180-atn(iSectorMid_H/iSectorEnd_W)
+				if iSectorEnd_W < 0 then iSectorEnd_A = atn(-iSectorMid_H/iSectorEnd_W)
+			endif
+			parameters iSectorEnd_A = iSectorEnd_A
+			gosub "updateSectorWidth"
+			gosub "updateBisectorDimension"
+			gosub "updateOffsetsDimension"
+		return
+
+		"updateSectorWidth":
+			iSector_W = abs(iSectorStart_W + iOffset_W_l + iSectorEnd_W - iOffset_W_r)
+			parameters iSector_W = iSector_W
+		return
