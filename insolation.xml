@@ -19,10 +19,12 @@
 !*
 !	Define necessary local paramers
 !	lets add more
+!	the new stroke
 !*
 
 !*
 !	Set restrictions and ranges
+!	make another commit
 !*
 	values "iSectorMid_H"	range (0,]
 
